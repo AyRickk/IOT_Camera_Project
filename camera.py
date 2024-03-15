@@ -9,6 +9,7 @@ import threading
 from collections import deque
 import subprocess
 from threading import Lock
+from concurrent.futures import ThreadPoolExecutor
 
 app = Flask(__name__)
 
@@ -56,6 +57,8 @@ video_thread = None
 obstruction_start_time = None
 obstruction_duration = 5  # Durée d'obstruction en secondes
 obstruction_mail_sent = False
+
+thread_pool = ThreadPoolExecutor(max_workers=3)
 
 
 def check_and_run_postfix_script():
@@ -184,7 +187,7 @@ def detect_objects(frame):
 
 
 def capture_video_and_image(frame, picam2):
-    global frame_buffer, last_detection_time, last_image_capture_time, highest_confidence, highest_confidence_frame, capture_start_time, video_thread
+    global frame_buffer, last_detection_time, last_image_capture_time, highest_confidence, highest_confidence_frame, capture_start_time
     timestamp = time.time()
     frame_buffer.append(frame)
 
@@ -204,8 +207,7 @@ def capture_video_and_image(frame, picam2):
                 try:
                     print("Enregistrement vidéo")
                     frames_to_save = list(frame_buffer)
-                    video_thread = threading.Thread(target=save_video, args=(frames_to_save, timestamp))
-                    video_thread.start()
+                    thread_pool.submit(save_video, frames_to_save, timestamp)
                     last_detection_time = None
                     capture_start_time = None
                 finally:
