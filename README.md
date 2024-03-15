@@ -12,7 +12,6 @@ Ce projet consiste en une application de surveillance utilisant une caméra PiCa
 - [Exemples](#exemples)
 - [Dépannage](#dépannage)
 - [Contributeurs](#contributeurs)
-- [Licence](#licence)
 
 ## Installation
 
@@ -28,7 +27,7 @@ Ce projet consiste en une application de surveillance utilisant une caméra PiCa
 Pour démarrer l'application, exécutez le script principal avec Python :
 
 ```bash
-python nom_du_script.py
+python3 camera.py
 ```
 
 L'application démarrera un serveur Flask accessible à l'adresse `http://0.0.0.0:5000` depuis n'importe quel navigateur web sur le même réseau.
