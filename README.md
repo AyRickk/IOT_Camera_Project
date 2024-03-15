@@ -21,7 +21,13 @@ Ce projet consiste en une application de surveillance utilisant une caméra PiCa
 
 ### Étapes
 1. Clonez le dépôt Git sur votre Raspberry Pi.
-2. Installez les dépendances en exécutant `pip install -r requirements.txt` dans le répertoire du projet.
+2. Installez les dépendances en exécutant :
+```bash
+sudo apt install python3-picamera2
+sudo apt install python3-flask
+sudo apt install python3-numpy
+sudo apt install python3-opencv
+```
 
 ## Utilisation
 Pour démarrer l'application, exécutez le script principal avec Python :
