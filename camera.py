@@ -45,14 +45,18 @@ if not os.path.exists(img_folder):
 detection_interval = 30  # Intervalle de détection en frames
 # Configuration du tampon vidéo
 frame_buffer = deque(maxlen=60 * detection_interval)  # Taille suffisante pour stocker 2 secondes de vidéo à 30 fps
+
 video_capture_duration = 10  # Durée totale de capture vidéo en secondes
 pre_capture_duration = 2  # Durée de pré-capture en secondes
 fps = 30  # À ajuster en fonction de la fréquence d'images réelle de la caméra
+pre_capture_buffer = deque(maxlen=int(fps * pre_capture_duration))
 
 image_saved = False
 video_saved = False
 video_lock = Lock()
 video_thread = None
+
+last_video_capture_time = time.time()
 
 obstruction_start_time = None
 obstruction_duration = 5  # Durée d'obstruction en secondes
@@ -62,11 +66,12 @@ thread_pool = ThreadPoolExecutor(max_workers=3)
 
 
 def check_and_run_postfix_script():
-    global image_saved, video_saved
+    global image_saved, video_saved, mail_sent
     if image_saved and video_saved:
         subprocess.run(["python", "send_mail.py"])
         image_saved = False
         video_saved = False
+        mail_sent = True
 
 
 def save_image(frame, timestamp):
@@ -99,6 +104,8 @@ highest_confidence_frame = None  # Image correspondant à la confiance la plus �
 capture_start_time = None  # Marqueur de temps du début de la capture
 
 frame_counter = 0  # Ajoutez un compteur de frames
+
+mail_sent = True
 
 
 def detect_movement(frame, prev_frame):
@@ -187,12 +194,18 @@ def detect_objects(frame):
 
 
 def capture_video_and_image(frame, picam2):
-    global frame_buffer, last_detection_time, last_image_capture_time, highest_confidence, highest_confidence_frame, capture_start_time
+    global frame_buffer, pre_capture_buffer, last_detection_time, last_image_capture_time, highest_confidence, highest_confidence_frame, capture_start_time, last_video_capture_time, mail_sent
     timestamp = time.time()
-    frame_buffer.append(frame)
+
+    pre_capture_buffer.append(frame)
+
+    if last_detection_time is not None and time.time() - last_detection_time < video_capture_duration:
+        frame_buffer.append(frame)
+    else:
+        frame_buffer.clear()
 
     # Enregistre l'image avec la confiance la plus élevée si 4 secondes se sont écoulées depuis le début de la capture
-    if capture_start_time is not None and timestamp - capture_start_time >= 4 and highest_confidence > 0:
+    if capture_start_time is not None and timestamp - capture_start_time >= video_capture_duration - pre_capture_duration and highest_confidence > 0:
         if highest_confidence_frame is not None:
             print("Saving image")
             save_image(highest_confidence_frame, timestamp)
@@ -201,16 +214,22 @@ def capture_video_and_image(frame, picam2):
         capture_start_time = None
 
     # Déclenche l'enregistrement si une détection a eu lieu et que 10 secondes se sont écoulées depuis la dernière détection
-    if video_lock.acquire(blocking=False):
-        try:
-            print("Enregistrement vidéo")
-            frames_to_save = list(frame_buffer)
-            future = thread_pool.submit(save_video, frames_to_save, timestamp)
-            future.result()  # Wait for the thread to complete
-            last_detection_time = None
-            capture_start_time = None
-        finally:
-            video_lock.release()
+    if mail_sent and last_detection_time and time.time() - last_detection_time < video_capture_duration and time.time() - last_video_capture_time >= 10:
+        if time.time() - last_detection_time >= video_capture_duration - pre_capture_duration:
+            if video_lock.acquire(blocking=False):
+                try:
+                    mail_sent = False
+                    last_video_capture_time = time.time()
+                    video_captured = False
+                    print("Enregistrement vidéo")
+                    frames_to_save = list(pre_capture_buffer) + list(frame_buffer)
+                    thread_pool.submit(save_video, frames_to_save, timestamp)
+                    last_detection_time = None
+                    capture_start_time = None
+                    frame_buffer.clear()
+                    pre_capture_buffer.clear()
+                finally:
+                    video_lock.release()
 
 
 # Ajoutez une variable globale pour stocker l'image précédente
