@@ -201,17 +201,16 @@ def capture_video_and_image(frame, picam2):
         capture_start_time = None
 
     # Déclenche l'enregistrement si une détection a eu lieu et que 10 secondes se sont écoulées depuis la dernière détection
-    if last_detection_time and time.time() - last_detection_time < video_capture_duration:
-        if time.time() - last_detection_time >= video_capture_duration - pre_capture_duration:
-            if video_lock.acquire(blocking=False):
-                try:
-                    print("Enregistrement vidéo")
-                    frames_to_save = list(frame_buffer)
-                    thread_pool.submit(save_video, frames_to_save, timestamp)
-                    last_detection_time = None
-                    capture_start_time = None
-                finally:
-                    video_lock.release()
+    if video_lock.acquire(blocking=False):
+        try:
+            print("Enregistrement vidéo")
+            frames_to_save = list(frame_buffer)
+            future = thread_pool.submit(save_video, frames_to_save, timestamp)
+            future.result()  # Wait for the thread to complete
+            last_detection_time = None
+            capture_start_time = None
+        finally:
+            video_lock.release()
 
 
 # Ajoutez une variable globale pour stocker l'image précédente
