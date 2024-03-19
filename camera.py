@@ -11,7 +11,11 @@ import subprocess
 from threading import Lock
 from concurrent.futures import ThreadPoolExecutor
 
+
+
+# // mettre 2 statics folders pour les images et les vidéos
 app = Flask(__name__)
+
 
 # Charger le modèle SSD MobileNet pré-entraîné pour la détection d'objets
 net = cv2.dnn.readNetFromTensorflow('model/ssd_mobilenet_v3_large_coco_2020_01_14/frozen_inference_graph.pb',
@@ -91,8 +95,24 @@ def save_video(frames, timestamp):
     for frame in frames:
         video_writer.write(frame)
     video_writer.release()
+    future = thread_pool.submit(convert_video, video_filename, timestamp)
+    try:
+        future.result()
+    except Exception as e:
+        print(f"Erreur lors de la conversion de la vidéo : {e}")
+    else:
+        print("Conversion réussie.")
     video_saved = True
     check_and_run_postfix_script()
+
+def convert_video(video_filename, timestamp):
+    try:
+        command = ['ffmpeg', '-i', video_filename, '-vcodec', 'libx264', '-acodec', 'aac', os.path.join(video_folder, f"{timestamp}_converted.mp4")]
+        subprocess.run(command, check=True)
+        subprocess.run(['rm', video_filename], check=True)
+        print("Conversion réussie.")
+    except subprocess.CalledProcessError as e:
+        print("Erreur lors de la conversion de la vidéo :", e)
 
 
 last_detection_time = None  # Marqueur de temps de la dernière détection
@@ -279,22 +299,33 @@ def gen_frames(picam2):
 def captured_videos():
     videos = os.listdir(video_folder)
     videos.sort(reverse=True)
-    video_html = "".join(
-        f'<video width="320" controls><source src="/videos/{video}" type="video/mp4"></video><br>' for
-        video in videos)
-    return f'''
+    video_html = "".join(f'<video controls width="320" src="/videos/{video}" type="video/mp4"> </video> <br>' for video in videos)
+    initial_video_count = video_count()
+    return render_template_string('''
     <!DOCTYPE html>
     <html>
     <head>
-        <meta http-equiv="refresh" content="4">
         <title>Captured Videos</title>
     </head>
     <body>
         <h1>Captured Videos</h1>
-        {video_html}
+        {{ video_html|safe }}
     </body>
     </html>
-    '''
+    <script>
+    let previousVideoCount = {{ initial_video_count }};
+    setInterval(function() {
+        fetch('/video_count')
+            .then(response => response.text())
+            .then(videoCount => {
+                if (videoCount !== previousVideoCount.toString()) {
+                    location.reload();
+                }
+                previousVideoCount = videoCount;
+            });
+    }, 5000);
+</script>
+    ''', initial_video_count=initial_video_count, video_html=video_html)
 
 
 @app.route('/videos/<filename>')
@@ -302,29 +333,52 @@ def serve_video(filename):
     return send_from_directory(video_folder, filename, mimetype='video/mp4')
 
 
+@app.route('/video_count')
+def video_count():
+    return str(len(os.listdir(video_folder)))
+
+
 @app.route('/img')
 def serve_images():
     images = os.listdir(img_folder)
     images.sort(reverse=True)
-    img_html = "".join(f'<img src="/img/{img}" width="320" <br>' for img in images)
-    return f'''
+    img_html = "".join(f'<img src="/img/{img}" width="320"> <br>' for img in images)
+    initial_img_count = img_count()  # Get the initial count of images
+    return render_template_string('''
     <!DOCTYPE html>
     <html>
     <head>
-        <meta http-equiv="refresh" content="4">
         <title>Captured Images</title>
     </head>
     <body>
         <h1>Captured Images</h1>
-        {img_html}
+        {{ img_html|safe }}
     </body>
     </html>
-    '''
+    <script>
+    let previousImgCount = {{ initial_img_count }};  // Use the initial count of images
+    setInterval(function() {
+        fetch('/img_count')
+            .then(response => response.text())
+            .then(imgCount => {
+                if (imgCount !== previousImgCount.toString()) {
+                    location.reload();
+                }
+                previousImgCount = imgCount;
+            });
+    }, 5000);  // Check every 5 seconds
+</script>
+    ''', initial_img_count=initial_img_count, img_html=img_html)
 
 
 @app.route('/img/<filename>')
 def serve_image(filename):
     return send_from_directory(img_folder, filename, mimetype='image/jpeg')
+
+
+@app.route('/img_count')
+def img_count():
+    return str(len(os.listdir(img_folder)))
 
 
 @app.route('/video_feed')
@@ -355,4 +409,3 @@ def index():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=True, threaded=True, port=5000)
-
